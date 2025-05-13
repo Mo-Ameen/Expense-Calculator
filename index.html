@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Expense Tracker</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 650px;
+      margin: auto;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    input[type="text"], input[type="number"], input[type="date"], input[type="email"], input[type="password"], button {
+      padding: 0.5rem;
+      width: 100%;
+      margin: 0.25rem 0;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #addExpenseBtn {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      transition: background-color 0.3s, transform 0.1s ease;
+    }
+
+    #addExpenseBtn:hover {
+      background-color: #0056b3;
+      cursor: pointer;
+    }
+
+    #addExpenseBtn:active {
+      transform: scale(0.97);
+    }
+
+    .payment-methods {
+      display: flex;
+      gap: 10px;
+      margin: 0.5rem 0;
+      flex-wrap: wrap;
+    }
+
+    .payment-methods label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 14px;
+    }
+
+    .expense-list {
+      margin-top: 1.5rem;
+    }
+
+    .expense-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      border-bottom: 1px solid #eee;
+      flex-wrap: wrap;
+    }
+
+    .expense-item input {
+      width: 120px;
+      margin-right: 0.5rem;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .actions button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.2rem;
+    }
+
+    .actions button:hover {
+      color: #007bff;
+    }
+
+    .success-popup {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #4BB543;
+      color: white;
+      padding: 1rem;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .method-tags {
+      font-size: 12px;
+      color: #555;
+    }
+
+    .method-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    #topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    #totalDisplay {
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Monthly Expense Tracker</h1>
+
+    <input type="number" id="amount" placeholder="Amount (₹)" />
+    <input type="text" id="description" placeholder="Description" />
+    <input type="date" id="date" />
+    
+    <div class="payment-methods">
+      <label><input type="checkbox" value="Liquid" class="payment-method" />Liquid</label>
+      <label><input type="checkbox" value="GPay" class="payment-method" />GPay</label>
+      <label><input type="checkbox" value="PhonePe" class="payment-method" />PhonePe</label>
+      <label><input type="checkbox" value="Other" class="payment-method" />Other</label>
+    </div>
+
+    <button id="addExpenseBtn">Add Expense</button>
+
+    <div id="topbar">
+      <label for="monthPicker">Select Month:</label>
+      <input type="month" id="monthPicker" />
+      <div id="totalDisplay">Total: ₹0.00</div>
+    </div>
+
+    <div class="expense-list" id="expenseList"></div>
+  </div>
+
+  <div class="success-popup" id="popup">Expense successfully added!</div>
+
+  <!-- Firebase JS -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, getDocs, updateDoc,
+      deleteDoc, doc, query, orderBy
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCC0sPT8NGqDQxbCos_rodWeeFZqzA8770",
+      authDomain: "myprojects-moameen.firebaseapp.com",
+      projectId: "myprojects-moameen",
+      storageBucket: "myprojects-moameen.appspot.com",
+      messagingSenderId: "49465145138",
+      appId: "1:49465145138:web:a78ff30bea1fbfd220c92b",
+      measurementId: "G-EHZX6XLTM3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    const amountEl = document.getElementById("amount");
+    const descEl = document.getElementById("description");
+    const dateEl = document.getElementById("date");
+    const expenseList = document.getElementById("expenseList");
+    const monthPicker = document.getElementById("monthPicker");
+    const popup = document.getElementById("popup");
+    const paymentCheckboxes = document.querySelectorAll(".payment-method");
+
+    const showPopup = (message) => {
+      popup.textContent = message;
+      popup.style.display = "block";
+      setTimeout(() => {
+        popup.style.display = "none";
+      }, 2000);
+    };
+
+    const renderExpenses = async () => {
+      const selectedMonth = monthPicker.value;
+      if (!selectedMonth) return;
+
+      const [year, month] = selectedMonth.split("-");
+      const start = new Date(`${year}-${month}-01`);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+
+      const q = query(collection(db, "expenses"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+
+      let total = 0;
+      expenseList.innerHTML = "";
+
+      snapshot.forEach((docSnap) => {
+        const exp = docSnap.data();
+        const expDate = new Date(exp.date);
+        if (expDate >= start && expDate < end) {
+          total += Number(exp.amount);
+
+          const item = document.createElement("div");
+          item.className = "expense-item";
+
+          const details = document.createElement("div");
+
+          const descField = document.createElement("input");
+          descField.value = exp.description;
+          descField.disabled = true;
+
+          const amtField = document.createElement("input");
+          amtField.type = "number";
+          amtField.value = exp.amount;
+          amtField.disabled = true;
+
+          const dateField = document.createElement("input");
+          dateField.type = "date";
+          dateField.value = exp.date;
+          dateField.disabled = true;
+
+          const methodText = document.createElement("div");
+          methodText.className = "method-tags";
+          methodText.textContent = `Payment: ${exp.paymentMethod?.join(", ") || "N/A"}`;
+
+          const createdText = document.createElement("div");
+          createdText.className = "method-tags";
+          const createdAt = exp.createdAt ? new Date(exp.createdAt) : new Date(exp.date);
+          createdText.textContent = `Created: ${createdAt.toLocaleDateString()}`;
+
+          const methodRow = document.createElement("div");
+          methodRow.className = "method-row";
+          methodRow.append(methodText, createdText);
+
+          details.append(descField, amtField, dateField, methodRow);
+
+          const actions = document.createElement("div");
+          actions.className = "actions";
+
+          const editBtn = document.createElement("button");
+          editBtn.innerHTML = "✏️";
+          const delBtn = document.createElement("button");
+          delBtn.innerHTML = "🗑️";
+
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "💾";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.textContent = "❌";
+
+          editBtn.onclick = () => {
+            descField.disabled = false;
+            amtField.disabled = false;
+            dateField.disabled = false;
+            actions.replaceChildren(saveBtn, cancelBtn);
+          };
+
+          saveBtn.onclick = async () => {
+            await updateDoc(doc(db, "expenses", docSnap.id), {
+              description: descField.value,
+              amount: parseFloat(amtField.value),
+              date: dateField.value,
+              paymentMethod: exp.paymentMethod,
+              createdAt: exp.createdAt || new Date().toISOString()
+            });
+            showPopup("Record edited successfully!");
+            renderExpenses();
+          };
+
+          cancelBtn.onclick = () => renderExpenses();
+
+          delBtn.onclick = async () => {
+            await deleteDoc(doc(db, "expenses", docSnap.id));
+            showPopup("Record deleted successfully!");
+            renderExpenses();
+          };
+
+          actions.append(editBtn, delBtn);
+          item.append(details, actions);
+          expenseList.appendChild(item);
+        }
+      });
+
+      document.getElementById("totalDisplay").textContent = `Total: ₹${total.toFixed(2)}`;
+    };
+
+    const addExpense = async () => {
+      const amount = amountEl.value;
+      const description = descEl.value;
+      const date = dateEl.value;
+
+      const paymentMethod = Array.from(paymentCheckboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+
+      if (!amount || !description || !date) {
+        alert("Please fill all fields.");
+        return;
+      }
+
+      await addDoc(collection(db, "expenses"), {
+        amount: parseFloat(amount),
+        description,
+        date,
+        paymentMethod,
+        createdAt: new Date().toISOString()
+      });
+
+      amountEl.value = "";
+      descEl.value = "";
+      dateEl.value = new Date().toISOString().split("T")[0];
+      paymentCheckboxes.forEach(cb => cb.checked = false);
+
+      showPopup("Expense successfully added!");
+      renderExpenses();
+    };
+
+    document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
+    monthPicker.addEventListener("change", renderExpenses);
+
+    const today = new Date();
+    dateEl.value = today.toISOString().split("T")[0];
+    monthPicker.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+    // Add login UI
+    const container = document.querySelector('.container');
+    const loginForm = document.createElement('div');
+    loginForm.innerHTML = `
+      <input type="email" id="email" placeholder="Email" />
+      <input type="password" id="password" placeholder="Password" />
+      <button id="loginBtn">Login</button>
+      <button id="logoutBtn" style="display:none;">Logout</button>
+    `;
+    container.prepend(loginForm);
+
+    document.getElementById('loginBtn').onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        alert("Login failed: " + err.message);
+      }
+    };
+
+    document.getElementById('logoutBtn').onclick = async () => {
+      await signOut(auth);
+    };
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        document.getElementById('email').style.display = 'none';
+        document.getElementById('password').style.display = 'none';
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('logoutBtn').style.display = 'inline';
+        renderExpenses();
+      } else {
+        document.getElementById('email').style.display = 'inline';
+        document.getElementById('password').style.display = 'inline';
+        document.getElementById('loginBtn').style.display = 'inline';
+        document.getElementById('logoutBtn').style.display = 'none';
+        expenseList.innerHTML = '<p style="text-align:center;color:#888;">Please login to view expenses.</p>';
+      }
+    });
+  </script>
+</body>
+</html>
